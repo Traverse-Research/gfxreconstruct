@@ -54,7 +54,7 @@ jobs:
     - name: Build
       run: |
         cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DGFXRECON_ENABLE_OPENXR=OFF -DBUILD_WERROR=OFF
-        cmake --build build --parallel --target VkLayer_gfxreconstruct VkLayer_gfxreconstruct_json gfxrecon-replay gfxrecon-convert gfxrecon-extract
+        cmake --build build --parallel "$(nproc)" --target VkLayer_gfxreconstruct VkLayer_gfxreconstruct_json gfxrecon-replay gfxrecon-convert gfxrecon-extract
     - name: Collect
       run: |
         mkdir out
