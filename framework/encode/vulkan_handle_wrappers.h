@@ -311,6 +311,9 @@ struct DeviceMemoryWrapper : public HandleWrapper<VkDeviceMemory>
     format::HandleId hardware_buffer_memory_id{ format::kNullHandleId };
     int              imported_fd{ -1 };
 
+    // Freshly allocated memory that has not been mapped, bound or imported, so its content is undefined.
+    bool content_undefined{ false };
+
     // State tracking info for memory with device addresses.
     format::HandleId device_id{ format::kNullHandleId };
     VkDeviceAddress  address{ 0 };
