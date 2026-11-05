@@ -56,7 +56,7 @@ void AssignDebugToObject(VkObjectType                        object_type,
 class VulkanStateTracker
 {
   public:
-    VulkanStateTracker();
+    explicit VulkanStateTracker(bool track_modified_assets);
 
     ~VulkanStateTracker();
 
@@ -882,6 +882,7 @@ class VulkanStateTracker
     void MarkReferencedAssetsAsDirty(vulkan_wrappers::CommandBufferWrapper* cmd_buf_wrapper);
 
     std::mutex       state_table_mutex_;
+    bool             track_modified_assets_;
     VulkanStateTable state_table_;
 
     // Keeps track of device memories' device addresses
