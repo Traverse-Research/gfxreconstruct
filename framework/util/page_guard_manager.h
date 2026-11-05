@@ -131,7 +131,8 @@ class PageGuardManager
                            uintptr_t shadow_memory_handle,
                            bool      use_shadow_memory,
                            bool      use_write_watch,
-                           bool      use_streaming_loads = false);
+                           bool      use_streaming_loads      = false,
+                           bool      mapped_content_undefined = false);
 
     void RemoveTrackedMemory(uint64_t memory_id);
 

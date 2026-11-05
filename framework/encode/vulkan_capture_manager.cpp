@@ -1351,6 +1351,32 @@ void VulkanCaptureManager::OverrideCmdWriteAccelerationStructuresPropertiesKHR(
         commandBuffer, accelerationStructureCount, pAccelerationStructures, queryType, queryPool, firstQuery);
 }
 
+static bool IsUndefinedContentAllocation(const VkMemoryAllocateInfo* allocate_info)
+{
+    for (auto next = static_cast<const VkBaseInStructure*>(allocate_info->pNext); next != nullptr; next = next->pNext)
+    {
+        switch (next->sType)
+        {
+            case VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO:
+            case VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO:
+            case VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT:
+            case VK_STRUCTURE_TYPE_MEMORY_OPAQUE_CAPTURE_ADDRESS_ALLOCATE_INFO:
+                break;
+            default:
+                return false;
+        }
+    }
+    return true;
+}
+
+void VulkanCaptureManager::MarkMemoryContentDefined(VkDeviceMemory memory)
+{
+    if (auto memory_wrapper = vulkan_wrappers::GetWrapper<vulkan_wrappers::DeviceMemoryWrapper>(memory))
+    {
+        memory_wrapper->content_undefined = false;
+    }
+}
+
 VkResult VulkanCaptureManager::OverrideAllocateMemory(VkDevice                     device,
                                                       const VkMemoryAllocateInfo*  pAllocateInfo,
                                                       const VkAllocationCallbacks* pAllocator,
@@ -1466,6 +1492,7 @@ VkResult VulkanCaptureManager::OverrideAllocateMemory(VkDevice                  
         GFXRECON_ASSERT(pMemory != nullptr);
         auto* memory_wrapper = vulkan_wrappers::GetWrapper<vulkan_wrappers::DeviceMemoryWrapper>(*pMemory);
         memory_wrapper->memory_type_index = pAllocateInfo->memoryTypeIndex;
+        memory_wrapper->content_undefined = IsUndefinedContentAllocation(pAllocateInfo);
 
         if (uses_address)
         {
@@ -2388,6 +2415,8 @@ void VulkanCaptureManager::PostProcess_vkBindBufferMemory(
 {
     if (result == VK_SUCCESS)
     {
+        MarkMemoryContentDefined(memory);
+
         if (IsCaptureModeTrack())
         {
             GFXRECON_ASSERT(state_tracker_ != nullptr);
@@ -2418,6 +2447,11 @@ void VulkanCaptureManager::PostProcess_vkBindBufferMemory2(VkResult             
 {
     if ((result == VK_SUCCESS) && (pBindInfos != nullptr))
     {
+        for (uint32_t i = 0; i < bindInfoCount; ++i)
+        {
+            MarkMemoryContentDefined(pBindInfos[i].memory);
+        }
+
         if (IsCaptureModeTrack())
         {
             GFXRECON_ASSERT(state_tracker_ != nullptr);
@@ -2452,6 +2486,8 @@ void VulkanCaptureManager::PostProcess_vkBindImageMemory(
 {
     if (result == VK_SUCCESS)
     {
+        MarkMemoryContentDefined(memory);
+
         if (IsCaptureModeTrack())
         {
             GFXRECON_ASSERT(state_tracker_ != nullptr);
@@ -2476,6 +2512,11 @@ void VulkanCaptureManager::PostProcess_vkBindImageMemory2(VkResult              
 {
     if ((result == VK_SUCCESS) && (pBindInfos != nullptr))
     {
+        for (uint32_t i = 0; i < bindInfoCount; ++i)
+        {
+            MarkMemoryContentDefined(pBindInfos[i].memory);
+        }
+
         if (IsCaptureModeTrack())
         {
             GFXRECON_ASSERT(state_tracker_ != nullptr);
@@ -2866,7 +2907,10 @@ void VulkanCaptureManager::PostProcess_vkMapMemory(VkResult         result,
                                                           wrapper->shadow_allocation,
                                                           use_shadow_memory,
                                                           use_write_watch,
-                                                          use_streaming_loads);
+                                                          use_streaming_loads,
+                                                          wrapper->content_undefined);
+
+                    wrapper->content_undefined = false;
                 }
             }
             else if (GetMemoryTrackingMode() == CaptureSettings::MemoryTrackingMode::kUnassisted)
