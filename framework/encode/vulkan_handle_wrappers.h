@@ -42,6 +42,7 @@
 #include "vulkan/vulkan.h"
 #include "vulkan/vulkan_core.h"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -311,8 +312,10 @@ struct DeviceMemoryWrapper : public HandleWrapper<VkDeviceMemory>
     format::HandleId hardware_buffer_memory_id{ format::kNullHandleId };
     int              imported_fd{ -1 };
 
-    // Freshly allocated memory that has not been mapped, bound or imported, so its content is undefined.
-    bool content_undefined{ false };
+    // Queue operation count when this memory was allocated, or kContentDefined once it has been mapped or bound, or
+    // when it was imported or exported. The content is undefined until a queue operation is issued after allocation.
+    static constexpr uint64_t kContentDefined = std::numeric_limits<uint64_t>::max();
+    std::atomic<uint64_t>     queue_operation_count_at_allocation{ kContentDefined };
 
     // State tracking info for memory with device addresses.
     format::HandleId device_id{ format::kNullHandleId };

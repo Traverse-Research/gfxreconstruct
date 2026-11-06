@@ -46,7 +46,6 @@
 #include <cassert>
 #include <memory>
 #include <mutex>
-#include <span>
 #include <algorithm>
 #include <set>
 #include <unordered_map>
@@ -577,26 +576,6 @@ class VulkanCaptureManager : public ApiCaptureManager
     void PostProcess_vkQueueBindSparse(
         VkResult result, VkQueue queue, uint32_t bindInfoCount, const VkBindSparseInfo* pBindInfo, VkFence)
     {
-        if (result == VK_SUCCESS)
-        {
-            auto mark_bound_memory = [this](const auto* binds, uint32_t bind_count) {
-                for (const auto& bind : std::span(binds, bind_count))
-                {
-                    for (const auto& memory_bind : std::span(bind.pBinds, bind.bindCount))
-                    {
-                        MarkMemoryContentDefined(memory_bind.memory);
-                    }
-                }
-            };
-
-            for (const auto& bind_info : std::span(pBindInfo, bindInfoCount))
-            {
-                mark_bound_memory(bind_info.pBufferBinds, bind_info.bufferBindCount);
-                mark_bound_memory(bind_info.pImageOpaqueBinds, bind_info.imageOpaqueBindCount);
-                mark_bound_memory(bind_info.pImageBinds, bind_info.imageBindCount);
-            }
-        }
-
         if (IsCaptureModeTrack() && (result == VK_SUCCESS))
         {
             assert((state_tracker_ != nullptr) && ((bindInfoCount == 0) || (pBindInfo != nullptr)));
@@ -1943,6 +1922,8 @@ class VulkanCaptureManager : public ApiCaptureManager
     // multiple threads may access the sparse resource maps concurrently. Therefore, we use a dedicated mutex
     // for write access to these maps.
     std::mutex sparse_resource_mutex;
+
+    std::atomic<uint64_t> queue_operation_count_{ 0 };
 
 #if ENABLE_OPENXR_SUPPORT
     std::mutex        fence_mutex;
