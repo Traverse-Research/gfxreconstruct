@@ -908,6 +908,8 @@ class VulkanCaptureManager : public ApiCaptureManager
         }
     }
 
+    void MarkMemoryContentDefined(VkDeviceMemory memory);
+
     void ProcessImportFdForBuffer(VkDevice device, VkBuffer buffer, VkDeviceSize memoryOffset);
     void ProcessImportFdForImage(VkDevice device, VkImage image, VkDeviceSize memoryOffset);
 
@@ -1920,6 +1922,8 @@ class VulkanCaptureManager : public ApiCaptureManager
     // multiple threads may access the sparse resource maps concurrently. Therefore, we use a dedicated mutex
     // for write access to these maps.
     std::mutex sparse_resource_mutex;
+
+    std::atomic<uint64_t> queue_operation_count_{ 0 };
 
 #if ENABLE_OPENXR_SUPPORT
     std::mutex        fence_mutex;

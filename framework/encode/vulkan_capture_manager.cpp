@@ -1351,6 +1351,32 @@ void VulkanCaptureManager::OverrideCmdWriteAccelerationStructuresPropertiesKHR(
         commandBuffer, accelerationStructureCount, pAccelerationStructures, queryType, queryPool, firstQuery);
 }
 
+static bool IsUndefinedContentAllocation(const VkMemoryAllocateInfo* allocate_info)
+{
+    for (auto next = static_cast<const VkBaseInStructure*>(allocate_info->pNext); next != nullptr; next = next->pNext)
+    {
+        switch (next->sType)
+        {
+            case VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO:
+            case VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO:
+            case VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT:
+            case VK_STRUCTURE_TYPE_MEMORY_OPAQUE_CAPTURE_ADDRESS_ALLOCATE_INFO:
+                break;
+            default:
+                return false;
+        }
+    }
+    return true;
+}
+
+void VulkanCaptureManager::MarkMemoryContentDefined(VkDeviceMemory memory)
+{
+    if (auto memory_wrapper = vulkan_wrappers::GetWrapper<vulkan_wrappers::DeviceMemoryWrapper>(memory))
+    {
+        memory_wrapper->queue_operation_count_at_allocation = vulkan_wrappers::DeviceMemoryWrapper::kContentDefined;
+    }
+}
+
 VkResult VulkanCaptureManager::OverrideAllocateMemory(VkDevice                     device,
                                                       const VkMemoryAllocateInfo*  pAllocateInfo,
                                                       const VkAllocationCallbacks* pAllocator,
@@ -1466,6 +1492,11 @@ VkResult VulkanCaptureManager::OverrideAllocateMemory(VkDevice                  
         GFXRECON_ASSERT(pMemory != nullptr);
         auto* memory_wrapper = vulkan_wrappers::GetWrapper<vulkan_wrappers::DeviceMemoryWrapper>(*pMemory);
         memory_wrapper->memory_type_index = pAllocateInfo->memoryTypeIndex;
+
+        if (IsUndefinedContentAllocation(pAllocateInfo))
+        {
+            memory_wrapper->queue_operation_count_at_allocation = queue_operation_count_.load();
+        }
 
         if (uses_address)
         {
@@ -2386,6 +2417,8 @@ void VulkanCaptureManager::ProcessImportFdForImage(VkDevice device, VkImage imag
 void VulkanCaptureManager::PostProcess_vkBindBufferMemory(
     VkResult result, VkDevice device, VkBuffer buffer, VkDeviceMemory memory, VkDeviceSize memoryOffset)
 {
+    MarkMemoryContentDefined(memory);
+
     if (result == VK_SUCCESS)
     {
         if (IsCaptureModeTrack())
@@ -2416,6 +2449,11 @@ void VulkanCaptureManager::PostProcess_vkBindBufferMemory2(VkResult             
                                                            uint32_t                      bindInfoCount,
                                                            const VkBindBufferMemoryInfo* pBindInfos)
 {
+    for (uint32_t i = 0; (pBindInfos != nullptr) && (i < bindInfoCount); ++i)
+    {
+        MarkMemoryContentDefined(pBindInfos[i].memory);
+    }
+
     if ((result == VK_SUCCESS) && (pBindInfos != nullptr))
     {
         if (IsCaptureModeTrack())
@@ -2450,6 +2488,8 @@ void VulkanCaptureManager::PostProcess_vkBindBufferMemory2(VkResult             
 void VulkanCaptureManager::PostProcess_vkBindImageMemory(
     VkResult result, VkDevice device, VkImage image, VkDeviceMemory memory, VkDeviceSize memoryOffset)
 {
+    MarkMemoryContentDefined(memory);
+
     if (result == VK_SUCCESS)
     {
         if (IsCaptureModeTrack())
@@ -2474,6 +2514,11 @@ void VulkanCaptureManager::PostProcess_vkBindImageMemory2(VkResult              
                                                           uint32_t                     bindInfoCount,
                                                           const VkBindImageMemoryInfo* pBindInfos)
 {
+    for (uint32_t i = 0; (pBindInfos != nullptr) && (i < bindInfoCount); ++i)
+    {
+        MarkMemoryContentDefined(pBindInfos[i].memory);
+    }
+
     if ((result == VK_SUCCESS) && (pBindInfos != nullptr))
     {
         if (IsCaptureModeTrack())
@@ -2857,6 +2902,9 @@ void VulkanCaptureManager::PostProcess_vkMapMemory(VkResult         result,
                         (GetMemoryProperties(wrapper->parent_device, wrapper->memory_type_index) &
                          VK_MEMORY_PROPERTY_HOST_CACHED_BIT) == 0;
 
+                    const bool content_undefined =
+                        wrapper->queue_operation_count_at_allocation.load() == queue_operation_count_.load();
+
                     // Return the pointer provided by the pageguard manager, which may be a pointer to shadow memory,
                     // not the mapped memory.
                     (*ppData) = manager->AddTrackedMemory(wrapper->handle_id,
@@ -2866,7 +2914,10 @@ void VulkanCaptureManager::PostProcess_vkMapMemory(VkResult         result,
                                                           wrapper->shadow_allocation,
                                                           use_shadow_memory,
                                                           use_write_watch,
-                                                          use_streaming_loads);
+                                                          use_streaming_loads,
+                                                          content_undefined);
+
+                    MarkMemoryContentDefined(memory);
                 }
             }
             else if (GetMemoryTrackingMode() == CaptureSettings::MemoryTrackingMode::kUnassisted)
@@ -3237,6 +3288,8 @@ void VulkanCaptureManager::PreProcess_vkQueueSubmit(std::shared_lock<CommonCaptu
     GFXRECON_UNREFERENCED_PARAMETER(pSubmits);
     GFXRECON_UNREFERENCED_PARAMETER(fence);
 
+    ++queue_operation_count_;
+
     // This must be done before QueueSubmitWriteFillMemoryCmd is called
     // and tracked mapped memory regions are resetted
     if (IsCaptureModeTrack() && GetUseAssetFile())
@@ -3278,6 +3331,8 @@ void VulkanCaptureManager::PreProcess_vkQueueSubmit2(
     GFXRECON_UNREFERENCED_PARAMETER(submitCount);
     GFXRECON_UNREFERENCED_PARAMETER(pSubmits);
     GFXRECON_UNREFERENCED_PARAMETER(fence);
+
+    ++queue_operation_count_;
 
     // This must be done before QueueSubmitWriteFillMemoryCmd is called
     // and tracked mapped memory regions are resetted
@@ -3666,6 +3721,8 @@ void VulkanCaptureManager::PreProcess_vkQueueBindSparse(VkQueue                 
     GFXRECON_UNREFERENCED_PARAMETER(queue);
     GFXRECON_UNREFERENCED_PARAMETER(bindInfoCount);
     GFXRECON_UNREFERENCED_PARAMETER(pBindInfo);
+
+    ++queue_operation_count_;
 
     if (IsCaptureModeTrack() && fence != VK_NULL_HANDLE)
     {

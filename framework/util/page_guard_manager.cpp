@@ -1199,7 +1199,8 @@ void* PageGuardManager::AddTrackedMemory(uint64_t  memory_id,
                                          uintptr_t shadow_memory_handle,
                                          bool      use_shadow_memory,
                                          bool      use_write_watch,
-                                         bool      use_streaming_loads)
+                                         bool      use_streaming_loads,
+                                         bool      mapped_content_undefined)
 {
     void*  aligned_address = nullptr;
     void*  shadow_memory   = nullptr;
@@ -1229,7 +1230,7 @@ void* PageGuardManager::AddTrackedMemory(uint64_t  memory_id,
             {
                 aligned_address = shadow_memory;
 
-                if (enable_copy_on_map_ && kUserFaultFdMode != protection_mode_)
+                if (enable_copy_on_map_ && !mapped_content_undefined && kUserFaultFdMode != protection_mode_)
                 {
                     CopyFromMappedMemory(shadow_memory, mapped_memory, mapped_range, use_streaming_loads);
                 }
@@ -1329,7 +1330,10 @@ void* PageGuardManager::AddTrackedMemory(uint64_t  memory_id,
                         shadow_memory_info->page_loaded[page_index] = true;
                     }
 
-                    CopyFromMappedMemory(dst_page, src_page, copy_size, use_streaming_loads);
+                    if (!mapped_content_undefined)
+                    {
+                        CopyFromMappedMemory(dst_page, src_page, copy_size, use_streaming_loads);
+                    }
 
                     dst_page += copy_size;
                     src_page += copy_size;
