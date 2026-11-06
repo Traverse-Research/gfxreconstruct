@@ -1828,7 +1828,7 @@ class VulkanCaptureManager : public ApiCaptureManager
 
     virtual void CreateStateTracker() override
     {
-        state_tracker_ = std::make_unique<VulkanStateTracker>();
+        state_tracker_ = std::make_unique<VulkanStateTracker>(GetUseAssetFile());
     }
 
     virtual void DestroyStateTracker() override

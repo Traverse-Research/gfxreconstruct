@@ -49,7 +49,7 @@
 GFXRECON_BEGIN_NAMESPACE(gfxrecon)
 GFXRECON_BEGIN_NAMESPACE(encode)
 
-VulkanStateTracker::VulkanStateTracker() {}
+VulkanStateTracker::VulkanStateTracker(bool track_modified_assets) : track_modified_assets_(track_modified_assets) {}
 
 VulkanStateTracker::~VulkanStateTracker() {}
 
@@ -3195,6 +3195,11 @@ void VulkanStateTracker::TrackPipelineDescriptors(vulkan_wrappers::CommandBuffer
 {
     assert(command_wrapper != nullptr);
     assert(ppl_bind_point < vulkan_state_info::PipelineBindPoints::kBindPoint_count);
+
+    if (!track_modified_assets_)
+    {
+        return;
+    }
 
     for (const auto& desc_set : command_wrapper->bound_descriptors[ppl_bind_point])
     {
