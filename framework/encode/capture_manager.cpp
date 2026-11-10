@@ -1277,6 +1277,19 @@ bool CommonCaptureManager::CreateCaptureFile(format::ApiFamilyId api_family, con
         capture_filename_ = util::filepath::GenerateTimestampedFilename(capture_filename_);
     }
 
+    // Trigger captures started within the same second would otherwise overwrite each other.
+    if (capture_filename_ == previous_capture_filename_)
+    {
+        ++capture_filename_repeats_;
+        capture_filename_ = util::filepath::InsertFilenamePostfix(capture_filename_,
+                                                                  "_" + std::to_string(capture_filename_repeats_ + 1));
+    }
+    else
+    {
+        previous_capture_filename_ = capture_filename_;
+        capture_filename_repeats_  = 0;
+    }
+
     file_stream_ = std::make_unique<CaptureFileOutputStream>(this, capture_filename_, kFileStreamBufferSize);
 
     if (file_stream_->IsValid())
