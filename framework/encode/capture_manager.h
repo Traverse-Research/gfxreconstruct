@@ -611,6 +611,8 @@ class CommonCaptureManager
     format::EnabledOptions                  file_options_;
     std::string                             base_filename_;
     std::string                             capture_filename_;
+    std::string                             previous_capture_filename_;
+    uint32_t                                capture_filename_repeats_ = 0;
     format::ApiFamilyId                     capture_file_api_family_;
     std::string                             asset_file_name_;
     bool                                    timestamp_filename_;

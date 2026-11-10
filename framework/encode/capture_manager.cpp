@@ -865,26 +865,18 @@ bool CommonCaptureManager::ExternalTriggerEnabled()
 {
     std::lock_guard<std::mutex> set_trim_state_lock(external_trim_trigger_mutex_g);
 
-    if (!previous_externally_set_trimming_state_g && externally_set_trimming_state_g)
-    {
-        previous_externally_set_trimming_state_g = externally_set_trimming_state_g;
-        return true;
-    }
-
-    return false;
+    bool result = !previous_externally_set_trimming_state_g && externally_set_trimming_state_g;
+    previous_externally_set_trimming_state_g = externally_set_trimming_state_g;
+    return result;
 }
 
 bool CommonCaptureManager::ExternalTriggerDisabled()
 {
     std::lock_guard<std::mutex> set_trim_state_lock(external_trim_trigger_mutex_g);
 
-    if (previous_externally_set_trimming_state_g && !externally_set_trimming_state_g)
-    {
-        previous_externally_set_trimming_state_g = externally_set_trimming_state_g;
-        return true;
-    }
-
-    return false;
+    bool result = previous_externally_set_trimming_state_g && !externally_set_trimming_state_g;
+    previous_externally_set_trimming_state_g = externally_set_trimming_state_g;
+    return result;
 }
 
 bool CommonCaptureManager::RuntimeWriteAssetsEnabled()
@@ -1283,6 +1275,19 @@ bool CommonCaptureManager::CreateCaptureFile(format::ApiFamilyId api_family, con
     if (timestamp_filename_)
     {
         capture_filename_ = util::filepath::GenerateTimestampedFilename(capture_filename_);
+    }
+
+    // Trigger captures started within the same second would otherwise overwrite each other.
+    if (capture_filename_ == previous_capture_filename_)
+    {
+        ++capture_filename_repeats_;
+        capture_filename_ = util::filepath::InsertFilenamePostfix(capture_filename_,
+                                                                  "_" + std::to_string(capture_filename_repeats_ + 1));
+    }
+    else
+    {
+        previous_capture_filename_ = capture_filename_;
+        capture_filename_repeats_  = 0;
     }
 
     file_stream_ = std::make_unique<CaptureFileOutputStream>(this, capture_filename_, kFileStreamBufferSize);
